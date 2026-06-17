@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # Database Service
+  mongodb:
+    image: mongo:latest
+    container_name: smartshield-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  # Cache Service
+  redis:
+    image: redis:alpine
+    container_name: smartshield-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # FastAPI Backend Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smartshield-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend_uploads:/app/uploads
+      # Mount host docker daemon socket so backend can spin up playwrite sandbox containers on host
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - MONGODB_URL=mongodb://mongodb:27017
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=b6540c1e847c2b5e28a5b7d42cfcf307221d8b7470fcf214777d01cd63b827e7
+      - USE_LOCAL_PLAYWRIGHT_FALLBACK=true
+    depends_on:
+      - mongodb
+      - redis
+
+  # React Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: smartshield-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  # Sandbox Container Image definition (pre-built on compile, not run as daemon service)
+  sandbox:
+    build:
+      context: ./sandbox
+      dockerfile: Dockerfile.sandbox
+    image: smartshield-sandbox:latest
+    # Sandbox containers are transient and are launched dynamically by the backend, 
+    # so we prevent Docker Compose from running a permanent sandbox service container.
+    entrypoint: ["echo", "SmartShield Sandbox Image ready."]
+
+volumes:
+  mongo_data:
+  redis_data:
+  backend_uploads:

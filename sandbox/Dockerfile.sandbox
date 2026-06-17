@@ -1,0 +1,14 @@
+FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
+
+# Set up sandbox execution directory
+WORKDIR /app
+
+# The official playwright image contains browsers pre-installed for chromium, firefox and webkit.
+# We just copy our agent script.
+COPY sandbox_agent.py /app/sandbox_agent.py
+
+# Create a directories for outputs to be mounted via volume
+RUN mkdir -p /app/outputs
+
+# Run the agent script by default (will be overridden by parameters)
+ENTRYPOINT ["python", "/app/sandbox_agent.py"]
