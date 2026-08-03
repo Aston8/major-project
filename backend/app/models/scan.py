@@ -59,6 +59,7 @@ class ScanResponse(BaseModel):
     local_ml_result: Optional[AIModelResult] = None
     gemini_result: Optional[AIModelResult] = None
     grok_result: Optional[AIModelResult] = None
+    qwen_result: Optional[AIModelResult] = None
     fusion_result: FusionResult
     url_metadata: Optional[URLMetadata] = None
     sandbox_report: Optional[SandboxResult] = None
@@ -71,3 +72,6 @@ class ScanResponse(BaseModel):
         json_encoders = {
             datetime: lambda dt: dt.isoformat()
         }
+
+class BulkScanRequest(BaseModel):
+    messages: List[str]

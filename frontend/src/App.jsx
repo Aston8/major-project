@@ -5,7 +5,6 @@ import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
-import { Dashboard } from './pages/Dashboard';
 import { Scanner } from './pages/Scanner';
 import { ScanHistory } from './pages/ScanHistory';
 import { AdminPanel } from './pages/AdminPanel';
@@ -57,8 +56,8 @@ const AppLayout = () => {
         <Sidebar />
         <main className="flex-1 bg-cyber-bg overflow-y-auto">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/scanner" element={<Scanner />} />
+            <Route path="/" element={<Scanner />} />
+            <Route path="/scanner" element={<Navigate to="/" replace />} />
             <Route path="/history" element={<ScanHistory />} />
             <Route path="/admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.core.config import settings
-from app.core.db import init_db, init_redis
+from app.core.db import init_db
 from app.services.ml_service import initialize_ml_models
 from app.api import auth, scans, admin
 
@@ -22,7 +22,6 @@ async def lifespan(app: FastAPI):
     # Startup actions
     logger.info("Initializing databases...")
     await init_db()
-    init_redis()
     
     # Trigger local ML models lazy load in background task
     logger.info("Scheduling background loading of ML models...")

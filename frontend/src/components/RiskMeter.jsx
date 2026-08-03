@@ -87,7 +87,7 @@ export const RiskMeter = ({ score = 0, category = 'Safe' }) => {
 
       <div className="mt-4">
         <span className={`text-lg font-bold uppercase tracking-wider ${textClass}`}>
-          {category}
+          {category === 'Dangerous' || category === 'Suspicious' || category === 'Scam' ? 'Scam' : 'Not Scam'}
         </span>
       </div>
     </div>

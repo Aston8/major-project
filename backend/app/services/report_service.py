@@ -138,17 +138,13 @@ def generate_scan_pdf(scan_data: dict, output_filename: str) -> str:
     story.append(Spacer(1, 15))
     
     # Score Matrix Table
-    local_score = scan_data.get("local_ml_result", {}).get("score", 0.0) if scan_data.get("local_ml_result") else "N/A"
-    gemini_score = scan_data.get("gemini_result", {}).get("score", 0.0) if scan_data.get("gemini_result") else "N/A"
-    grok_score = scan_data.get("grok_result", {}).get("score", 0.0) if scan_data.get("grok_result") else "N/A"
+    qwen_score = scan_data.get("qwen_result", {}).get("score", 0.0) if scan_data.get("qwen_result") else "N/A"
     intel_score = scan_data.get("threat_intel_score", "N/A")
     reputation_score = scan_data.get("url_metadata", {}).get("risk_score", "N/A") if scan_data.get("url_metadata") else "N/A"
     
     matrix_data = [
         [Paragraph("<b>Evaluation Engine</b>", bold_body_style), Paragraph("<b>Risk Score (0-100)</b>", bold_body_style), Paragraph("<b>Verdict</b>", bold_body_style)],
-        ["Local ML Model", str(local_score), "Safe" if isinstance(local_score, (int,float)) and local_score <= 30 else "Suspicious" if isinstance(local_score, (int,float)) and local_score <= 60 else "Dangerous" if isinstance(local_score, (int,float)) else "N/A"],
-        ["Primary AI (Gemini)", str(gemini_score), scan_data.get("gemini_result", {}).get("category", "N/A") if scan_data.get("gemini_result") else "N/A"],
-        ["Secondary AI (Grok)", str(grok_score), scan_data.get("grok_result", {}).get("category", "N/A") if scan_data.get("grok_result") else "N/A"],
+        ["AI Vision & Content Analysis", str(qwen_score), scan_data.get("qwen_result", {}).get("category", "N/A") if scan_data.get("qwen_result") else "N/A"],
     ]
     
     if scan_data.get("type") == "url":

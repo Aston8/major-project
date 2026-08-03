@@ -98,7 +98,7 @@ export const ScanHistory = () => {
               <option value="text">Text / SMS</option>
               <option value="url">URL Sandbox</option>
               <option value="image">Screenshot OCR</option>
-              <option value="voice">Voice Call Whisper</option>
+              <option value="voice">Voice Call</option>
               <option value="email">Email Integrity</option>
             </select>
           </div>

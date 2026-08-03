@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     # Database & Caching
     MONGODB_URL: str = "mongodb://localhost:27017"
     MONGODB_DB_NAME: str = "smartshield"
-    REDIS_URL: str = "redis://localhost:6379"
     
     # Security / Auth
     JWT_SECRET: str = "b6540c1e847c2b5e28a5b7d42cfcf307221d8b7470fcf214777d01cd63b827e7"
@@ -20,6 +19,9 @@ class Settings(BaseSettings):
     GROK_API_KEY: str = ""
     VIRUSTOTAL_API_KEY: str = ""
     
+    # Local Qwen2.5-VL / Ollama
+    OLLAMA_URL: str = "http://localhost:11434"
+    QWEN_MODEL: str = "qwen2.5vl:3b"
     # Sandbox Environment Settings
     SANDBOX_DOCKER_IMAGE: str = "smartshield-sandbox:latest"
     SANDBOX_TIMEOUT: int = 60

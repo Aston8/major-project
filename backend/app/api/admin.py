@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from app.api.deps import get_current_admin
-from app.core.db import get_db, redis_client
+from app.core.db import get_db
 from app.models.admin import BlacklistCreate, BlacklistItem, UserRoleUpdate, SystemStats, AuditLogResponse
 from datetime import datetime
 from bson import ObjectId
@@ -50,7 +50,7 @@ async def get_system_stats(admin: dict = Depends(get_current_admin)):
         "scans_by_category": scans_by_category,
         "blacklist_count": blacklist_count,
         "active_sandbox_containers": active_sandbox_containers,
-        "redis_connected": redis_client is not None,
+        "redis_connected": False,
         "mongodb_connected": True
     }
 

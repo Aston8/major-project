@@ -91,19 +91,10 @@ export const AdminPanel = () => {
         </div>
 
         <div className="glass-card p-5 rounded-2xl border border-white/5 flex flex-col gap-1.5">
-          <span className="text-2xs font-semibold text-gray-400 uppercase tracking-widest">Redis Status</span>
+          <span className="text-2xs font-semibold text-gray-400 uppercase tracking-widest">Cache System</span>
           <div className="flex items-center gap-2 mt-1">
-            {stats?.redis_connected ? (
-              <>
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm animate-pulse"></span>
-                <span className="text-sm font-bold text-gray-200">Connected Cache</span>
-              </>
-            ) : (
-              <>
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm"></span>
-                <span className="text-sm font-bold text-gray-300">In-Memory Fallback</span>
-              </>
-            )}
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm animate-pulse"></span>
+            <span className="text-sm font-bold text-gray-200">In-Memory Active</span>
           </div>
         </div>
 

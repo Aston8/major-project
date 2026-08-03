@@ -11,6 +11,38 @@ except ImportError:
     class PlaywrightTimeoutError(Exception):
         pass
 
+SAFE_DOMAINS = [
+    "google.com", "microsoft.com", "apple.com", "chatgpt.com", "openai.com",
+    "github.com", "facebook.com", "netflix.com", "amazon.com", "youtube.com",
+    "wikipedia.org", "linkedin.com", "twitter.com", "x.com", "instagram.com"
+]
+
+def is_whitelisted_domain(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.netloc.split(":")[0].lower().strip()
+        if hostname.startswith("www."):
+            hostname = hostname[4:]
+        for domain in SAFE_DOMAINS:
+            if hostname == domain or hostname.endswith("." + domain):
+                return True
+    except Exception:
+        pass
+    return False
+
+def get_base_domain(domain: str) -> str:
+    parts = domain.split(".")
+    if len(parts) >= 3:
+        if parts[-2] in ["com", "co", "org", "net", "gov", "edu", "ac"]:
+            return ".".join(parts[-3:])
+    if len(parts) >= 2:
+        return ".".join(parts[-2:])
+    return domain
+
+def is_same_base_domain(d1: str, d2: str) -> bool:
+    return get_base_domain(d1) == get_base_domain(d2)
+
+
 def analyze_url(url: str, screenshot_path: str, html_path: str) -> dict:
     report = {
         "executed": True,
@@ -84,7 +116,19 @@ def analyze_url(url: str, screenshot_path: str, html_path: str) -> dict:
                     final_url = page.url
                     if final_url != url:
                         report["redirect_chain"].append(final_url)
-                        report["behavior_findings"].append(f"Redirected from original URL to: {final_url}")
+                        try:
+                            orig_parsed = urlparse(url)
+                            final_parsed = urlparse(final_url)
+                            orig_domain = orig_parsed.netloc.split(":")[0].lower().strip()
+                            final_domain = final_parsed.netloc.split(":")[0].lower().strip()
+                            if orig_domain.startswith("www."): orig_domain = orig_domain[4:]
+                            if final_domain.startswith("www."): final_domain = final_domain[4:]
+                            
+                            # Only warn/flag if redirecting to an entirely different host (cross-domain)
+                            if not is_same_base_domain(orig_domain, final_domain) and not is_whitelisted_domain(final_url):
+                                report["behavior_findings"].append(f"Redirected to external URL: {final_url}")
+                        except Exception:
+                            pass
             except PlaywrightTimeoutError:
                 report["behavior_findings"].append("Page navigation timed out after 30 seconds.")
             except Exception as e:
@@ -124,9 +168,12 @@ def analyze_url(url: str, screenshot_path: str, html_path: str) -> dict:
                     report["detected_forms"].append(form_details)
                     
                     if has_password:
-                        report["behavior_findings"].append("Credential harvesting: Password login form detected on landing page.")
-                        if report["sandbox_verdict"] != "Dangerous":
-                            report["sandbox_verdict"] = "Suspicious"
+                        if is_whitelisted_domain(url):
+                            report["behavior_findings"].append("Secure login form detected on trusted domain.")
+                        else:
+                            report["behavior_findings"].append("Credential harvesting: Password login form detected on landing page.")
+                            if report["sandbox_verdict"] != "Dangerous":
+                                report["sandbox_verdict"] = "Suspicious"
             except Exception as e:
                 report["behavior_findings"].append(f"Error parsing DOM forms: {str(e)}")
 
@@ -167,10 +214,10 @@ def analyze_url(url: str, screenshot_path: str, html_path: str) -> dict:
     # Analyze gathered findings to finalize verdict
     if report["sandbox_verdict"] != "Dangerous":
         danger_triggers = [
-            "download of", "redirected from original URL to"
+            "download of", "malicious behavior:"
         ]
         suspicious_triggers = [
-            "password login form", "iframes", "notification"
+            "password login form", "iframes", "notification", "redirected to external url"
         ]
         
         has_danger = any(any(dt in f.lower() for dt in danger_triggers) for f in report["behavior_findings"])

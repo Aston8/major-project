@@ -25,7 +25,7 @@ class SystemStats(BaseModel):
     scans_by_category: Dict[str, int]
     blacklist_count: int
     active_sandbox_containers: int
-    redis_connected: bool
+    redis_connected: bool = False
     mongodb_connected: bool
 
 class AuditLogResponse(BaseModel):

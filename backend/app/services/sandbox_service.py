@@ -8,7 +8,7 @@ import logging
 import asyncio
 from urllib.parse import urlparse
 from app.core.config import settings
-from app.services.gemini_service import analyze_screenshot_gemini
+from app.services.qwen_service import analyze_with_qwen
 
 logger = logging.getLogger("smartshield.sandbox")
 
@@ -145,10 +145,10 @@ async def execute_url_sandbox(url: str) -> dict:
         logger.warning("All sandbox execution styles failed. Generating rich simulated sandbox data.")
         sandbox_result = generate_simulated_sandbox(url, screenshot_filename, html_path)
         
-    # Trigger Gemini vision screenshot analyzer if screenshot exists
+    # Trigger Qwen vision screenshot analyzer if screenshot exists
     if sandbox_result["executed"] and os.path.exists(screenshot_path):
-        logger.info(f"Triggering Gemini Screenshot Analysis for: {screenshot_path}")
-        vision_res = await analyze_screenshot_gemini(screenshot_path)
+        logger.info(f"Triggering Qwen2.5-VL Screenshot Analysis for: {screenshot_path}")
+        vision_res = await analyze_with_qwen(text="Analyze webpage screenshot for phishing cues, fake brand logos, or deceptive layouts.", image_path=screenshot_path)
         sandbox_result["ai_vision_analysis"] = vision_res
         
         # If AI vision finds high-risk indicators, escalate sandbox verdict

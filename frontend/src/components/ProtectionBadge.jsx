@@ -38,10 +38,12 @@ export const ProtectionBadge = ({ category = 'Safe' }) => {
     };
   }
 
+  const displayLabel = (cleanCat === 'dangerous' || cleanCat === 'suspicious' || cleanCat === 'scam') ? 'SCAM' : 'NOT SCAM';
+  
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border ${styles.bg} ${styles.text} ${styles.border}`}>
       {styles.icon}
-      <span>{category.toUpperCase()}</span>
+      <span>{displayLabel}</span>
     </span>
   );
 };
