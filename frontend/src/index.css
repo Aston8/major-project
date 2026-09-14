@@ -5,10 +5,41 @@
 @layer base {
   body {
     font-family: 'Inter', sans-serif;
-    background-color: #080C14;
+    background-color: #0A0314;
     overflow-x: hidden;
+    position: relative;
   }
   
+  /* Cyber Grid Mesh Background */
+  body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: 
+      linear-gradient(rgba(161, 96, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(161, 96, 255, 0.035) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+    z-index: -2;
+  }
+
+  /* Futuristic AI Ambient Glows */
+  body::after {
+    content: "";
+    position: fixed;
+    top: -20%;
+    right: -10%;
+    width: 50vw;
+    height: 50vw;
+    background: radial-gradient(circle, rgba(107, 33, 228, 0.16) 0%, rgba(161, 96, 255, 0.05) 50%, transparent 80%);
+    pointer-events: none;
+    z-index: -1;
+    filter: blur(100px);
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Outfit', sans-serif;
   }
@@ -16,14 +47,46 @@
 
 /* Glassmorphism styling components */
 .glass-card {
-  background: rgba(21, 29, 48, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(22, 10, 41, 0.7) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(163, 102, 255, 0.12) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -150%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(161, 96, 255, 0.05),
+    transparent
+  );
+  transform: skewX(-25deg);
+  animation: shine-sweep 8s infinite ease-in-out;
+  pointer-events: none;
+}
+
+@keyframes shine-sweep {
+  0% { left: -150%; }
+  35% { left: 150%; }
+  100% { left: 150%; }
+}
+
+.glass-card:hover {
+  border-color: rgba(163, 102, 255, 0.25) !important;
+  box-shadow: 0 12px 40px -10px rgba(107, 33, 228, 0.15);
 }
 
 .glass-nav {
-  background: rgba(8, 12, 20, 0.8);
+  background: rgba(10, 3, 20, 0.85);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
@@ -46,8 +109,8 @@
 }
 
 .glow-primary {
-  box-shadow: 0 0 15px rgba(99, 102, 241, 0.25);
-  border-color: rgba(99, 102, 241, 0.4);
+  box-shadow: 0 0 20px rgba(161, 96, 255, 0.2) !important;
+  border-left: 3.5px solid rgba(161, 96, 255, 0.85) !important;
 }
 
 /* Scrollbar customizations */
@@ -57,30 +120,69 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #080C14;
+  background: #0A0314;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1E293B;
+  background: #2B154E;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: #432078;
 }
 
 /* Micro-animations */
 @keyframes pulse-glow {
   0%, 100% {
     opacity: 0.6;
-    box-shadow: 0 0 5px rgba(99, 102, 241, 0.2);
+    box-shadow: 0 0 5px rgba(107, 33, 228, 0.2);
   }
   50% {
     opacity: 1;
-    box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
+    box-shadow: 0 0 15px rgba(107, 33, 228, 0.5);
   }
 }
 
 .pulse-cyber {
   animation: pulse-glow 2s infinite ease-in-out;
 }
+/* Premium Light Purple Accents & Input Highlights */
+input[type="text"],
+textarea,
+select {
+  background-color: rgba(12, 5, 24, 0.6) !important;
+  border-color: rgba(163, 102, 255, 0.18) !important;
+  color: #F5EEFF !important; /* Soft white/violet text */
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+input[type="text"]::placeholder,
+textarea::placeholder {
+  color: #8C75A5 !important; /* Soft violet placeholder */
+}
+
+input[type="text"]:focus,
+textarea:focus,
+select:focus {
+  border-color: rgba(163, 102, 255, 0.6) !important; /* Light purple focus border */
+  background-color: rgba(18, 9, 36, 0.8) !important;
+  box-shadow: 0 0 12px rgba(163, 102, 255, 0.25) !important;
+}
+
+/* Enhanced drag-and-drop dashboard upload areas */
+.border-dashed {
+  border-color: rgba(163, 102, 255, 0.22) !important;
+  background-color: rgba(107, 33, 228, 0.03) !important;
+  transition: all 0.25s ease-in-out;
+}
+
+.border-dashed:hover {
+  border-color: rgba(163, 102, 255, 0.5) !important;
+  background-color: rgba(107, 33, 228, 0.07) !important;
+}
+
+.border-dashed span {
+  color: #DBC8FC !important; /* Soft light purple text */
+}
+

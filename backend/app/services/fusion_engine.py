@@ -1,6 +1,7 @@
 import logging
 import re
 from typing import Dict, Any, Optional
+from urllib.parse import urlparse
 
 logger = logging.getLogger("smartshield.fusion")
 
@@ -10,25 +11,34 @@ SAFE_DOMAINS = [
     "wikipedia.org", "linkedin.com", "twitter.com", "x.com", "instagram.com"
 ]
 
-def is_whitelisted(text_to_check: str) -> bool:
-    if not text_to_check:
+def is_whitelisted(url_or_domain: str) -> bool:
+    if not url_or_domain:
         return False
-    text_lower = text_to_check.lower()
     
-    # Split text into potential domain tokens by space, slashes, colons, or other query/path delimiters
-    tokens = re.split(r'[\s\/\:\?\#\=\&]+', text_lower)
-    for token in tokens:
-        # Strip leading/trailing dots
-        token = token.strip(".")
-        for domain in SAFE_DOMAINS:
-            # Match domain exactly or as a subdomain (e.g. accounts.google.com ends with .google.com)
-            if token == domain or token.endswith("." + domain):
-                return True
+    url_lower = url_or_domain.lower().strip()
+    
+    # Try to extract the hostname properly using urlparse
+    if not url_lower.startswith(("http://", "https://")):
+        parsed = urlparse("http://" + url_lower)
+    else:
+        parsed = urlparse(url_lower)
+        
+    hostname = parsed.netloc or parsed.path
+    hostname = hostname.split(":")[0].strip()
+    if hostname.startswith("www."):
+        hostname = hostname[4:]
+        
+    for domain in SAFE_DOMAINS:
+        if hostname == domain or hostname.endswith("." + domain):
+            return True
+            
     return False
+
 
 def fuse_text_scores(
     qwen_res: Dict[str, Any],
-    sandbox_res: Optional[Dict[str, Any]] = None
+    sandbox_res: Optional[Dict[str, Any]] = None,
+    text_content: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Risk Fusion logic for text-based inputs (SMS, Whatsapp, Voice transcript, Email body).
@@ -36,21 +46,29 @@ def fuse_text_scores(
     optional Sandbox execution logs if a URL was detected and sandboxed.
     """
     qwen_explanation = qwen_res.get("explanation", "No explanation details available.")
+    whitelist_triggered = False
+    whitelist_reason = ""
     
-    # Check whitelist override
-    whitelist_triggered = is_whitelisted(qwen_explanation)
-    if sandbox_res:
-        for req in sandbox_res.get("network_requests", []):
-            if is_whitelisted(req.get("url", "")) or is_whitelisted(req.get("domain", "")):
-                whitelist_triggered = True
-                break
+    # 1. Check if the sandboxed URL is whitelisted
+    if sandbox_res and sandbox_res.get("url"):
+        target_url = sandbox_res.get("url")
+        if is_whitelisted(target_url):
+            whitelist_triggered = True
+            whitelist_reason = f"The embedded URL domain ({target_url}) is identified as a trusted global platform."
+            
+    # 2. If no sandbox, check if the input text itself is exactly a whitelisted URL/domain
+    if not whitelist_triggered and text_content:
+        cleaned_text = text_content.strip()
+        if " " not in cleaned_text and is_whitelisted(cleaned_text):
+            whitelist_triggered = True
+            whitelist_reason = f"The input content is verified as a trusted global platform ({cleaned_text})."
                 
     if whitelist_triggered:
         return {
             "final_score": 5.0,
             "category": "Safe",
             "confidence": 99.0,
-            "explanation": "Final Risk Engine VERDICT: [Not Scam] (Score: 5.0). Whitelist Check: The domain is identified as a trusted global platform (e.g. ChatGPT, Google, Microsoft). The content is verified as legitimate and safe.",
+            "explanation": f"Final Risk Engine VERDICT: [Not Scam] (Score: 5.0). Whitelist Check: {whitelist_reason}",
             "recommendations": [
                 "Trusted platform verified.",
                 "Safe for standard browsing and authentication."
@@ -71,6 +89,8 @@ def fuse_text_scores(
         
         # Blend the text semantics score with the URL sandbox score (50/50 weight)
         final_score = (qwen_score * 0.5) + (sandbox_score * 0.5)
+        if qwen_score >= 30.0:
+            final_score = max(final_score, qwen_score)
         # Sandbox execution adds real behavioral proof, increasing confidence
         confidence = min(max(confidence, 90.0), 98.0)
     else:
@@ -103,7 +123,7 @@ def fuse_text_scores(
     if sandbox_res:
         findings = ", ".join(sandbox_res.get("behavior_findings", []))
         findings_str = f" Sandbox findings: {findings}." if findings else ""
-        explanation = f"Final Risk Engine VERDICT: [{verdict_label}] (Score: {round(final_score, 1)}). Combined Qwen text analysis and URL Sandbox check.{findings_str} {qwen_explanation}"
+        explanation = f"Final Risk Engine VERDICT: [{verdict_label}] (Score: {round(final_score, 1)}). Combined AI text analysis and URL Sandbox check.{findings_str} {qwen_explanation}"
     else:
         explanation = f"Final Risk Engine VERDICT: [{verdict_label}] (Score: {round(final_score, 1)}). {qwen_explanation}"
 
@@ -113,7 +133,7 @@ def fuse_text_scores(
         "confidence": round(confidence, 2),
         "explanation": explanation,
         "recommendations": recs,
-        "strategy": "Qwen + Sandbox Fusion" if sandbox_res else "Local Qwen2.5-VL Engine"
+        "strategy": "SmartShield AI + Sandbox Fusion" if sandbox_res else "SmartShield AI Engine"
     }
 
 def fuse_url_scores(
@@ -134,12 +154,7 @@ def fuse_url_scores(
     target_url = reputation_res.get("url", "") or sandbox_res.get("url", "") or ""
     whitelist_triggered = is_whitelisted(target_url)
     
-    # Also check network request domains captured by sandbox
-    for req in sandbox_res.get("network_requests", []):
-        if is_whitelisted(req.get("url", "")) or is_whitelisted(req.get("domain", "")):
-            whitelist_triggered = True
-            break
-            
+
     if whitelist_triggered:
         return {
             "final_score": 5.0,
@@ -169,6 +184,8 @@ def fuse_url_scores(
     
     # Calculate weighted score
     final_score = (sandbox_score * 0.35) + (threat_score * 0.25) + (reputation_score * 0.20) + (llm_score * 0.20)
+    if llm_score >= 30.0:
+        final_score = max(final_score, llm_score)
     
     category = "Safe"
     if final_score > 60:
@@ -198,7 +215,7 @@ def fuse_url_scores(
     findings.extend(sandbox_res.get("behavior_findings", []))
     findings.extend(threat_intel_res.get("threat_indicators", []))
     
-    explanation = f"Final Risk Engine VERDICT: [{verdict_label}] (Score: {round(final_score, 1)}). Multi-modal fusion using Sandbox and local Qwen2.5-VL checks. "
+    explanation = f"Final Risk Engine VERDICT: [{verdict_label}] (Score: {round(final_score, 1)}). Multi-modal fusion using Sandbox and local AI content checks. "
     if findings:
         explanation += f"Identified warning indicators: {'; '.join(findings[:5])}."
     else:

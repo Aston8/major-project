@@ -101,7 +101,7 @@ def heuristic_text_analysis(text: str) -> dict:
     # Scam indicators & keyword categories
     scam_keywords = {
         "OTP Scams": ["otp", "one time password", "verification code", "don't share", "do not share", "sent a code", "verify your device"],
-        "Banking Scams": ["bank account", "blocked", "suspended", "unauthorized transaction", "netbanking", "kyc update", "verify identity", "bank details", "credited", "credit alert", "payment received", "transaction credited", "cashback", "reward credited"],
+        "Banking Scams": ["bank account", "blocked", "suspended", "unauthorized transaction", "netbanking", "kyc update", "verify identity", "bank details", "credited", "credit alert", "payment received", "transaction credited", "cashback", "reward credited", "debit card", "suspicious charge", "freeze your account", "credit card", "unauthorized charge", "freeze account"],
         "UPI Fraud": ["upi", "gpay", "phonepe", "paytm", "request money", "receive prize", "scan QR code to receive", "refund request"],
         "Lottery Scams": ["lottery", "won", "prize", "jackpot", "cash reward", "crores", "lucky draw", "claim prize", "win cash", "get cash"],
         "Job Scams": ["work from home", "daily salary", "part-time job", "youtube video like", "telegram group tasks", "earn daily", "no experience needed"],

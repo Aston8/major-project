@@ -476,7 +476,6 @@ export const Scanner = () => {
                 {result.qwen_result && (
                   <div className="p-4 bg-gray-900/20 border border-gray-800 rounded-xl flex flex-col gap-2">
                     <span className="text-2xs font-bold text-gray-400 uppercase tracking-widest font-semibold">AI Vision & Content Analysis</span>
-                    <span className="text-xl font-extrabold text-indigo-400">{result.qwen_result.score} <span className="text-xs text-gray-500 font-normal">/ 100</span></span>
                     <p className="text-2xs text-gray-400 mt-2 font-light leading-relaxed">{result.qwen_result.explanation}</p>
                   </div>
                 )}

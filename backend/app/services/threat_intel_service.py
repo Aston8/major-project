@@ -14,6 +14,12 @@ async def get_virustotal_report(url: str) -> Dict[str, Any]:
     """
     Fetches URL threat report from VirusTotal v3 API.
     """
+    # Ensure scheme is present for consistency
+    url_clean = url.strip()
+    if not url_clean.lower().startswith(("http://", "https://")):
+        url_clean = "http://" + url_clean
+    url = url_clean
+
     if not settings.VIRUSTOTAL_API_KEY:
         logger.info("VirusTotal API key missing. Mocking VirusTotal results.")
         return mock_virustotal(url)
@@ -64,6 +70,12 @@ async def check_openphish(url: str) -> Dict[str, Any]:
     """
     Checks if a URL matches the cached OpenPhish community feed database.
     """
+    # Ensure scheme is present for consistency
+    url_clean = url.strip()
+    if not url_clean.lower().startswith(("http://", "https://")):
+        url_clean = "http://" + url_clean
+    url = url_clean
+
     feed_cache_key = "openphish_feed_list"
     feed_text = cache_get(feed_cache_key)
     
@@ -100,6 +112,12 @@ async def check_phishtank(url: str) -> Dict[str, Any]:
     """
     Checks URL against PhishTank phishing database.
     """
+    # Ensure scheme is present for consistency
+    url_clean = url.strip()
+    if not url_clean.lower().startswith(("http://", "https://")):
+        url_clean = "http://" + url_clean
+    url = url_clean
+
     # PhishTank provides a free online search query API or a daily download JSON database
     # Here we perform domain checks against known patterns and return a mock/heuristic validator
     # or query PhishTank public check.

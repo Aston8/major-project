@@ -9,6 +9,7 @@ import asyncio
 from urllib.parse import urlparse
 from app.core.config import settings
 from app.services.qwen_service import analyze_with_qwen
+from app.services.fusion_engine import is_whitelisted
 
 logger = logging.getLogger("smartshield.sandbox")
 
@@ -188,6 +189,10 @@ def generate_simulated_sandbox(url: str, screenshot_filename: str, html_path: st
     verdict = "Safe"
     
     url_lower = url.lower()
+    if url_lower.startswith("http://") and not is_whitelisted(url):
+        behavior_findings.append("Insecure connection: Target URL uses unencrypted HTTP protocol.")
+        verdict = "Suspicious"
+
     if "login" in url_lower or "bank" in url_lower or "verify" in url_lower:
         detected_forms.append({
             "form_index": 0,

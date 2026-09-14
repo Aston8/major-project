@@ -108,12 +108,21 @@ def analyze_url(url: str, screenshot_path: str, html_path: str) -> dict:
             
             # Navigate to page
             try:
+                # Flag target URLs using insecure unencrypted HTTP protocol
+                if url.startswith("http://") and not is_whitelisted_domain(url):
+                    report["behavior_findings"].append("Insecure connection: Target URL uses unencrypted HTTP protocol.")
+
                 response = page.goto(url, timeout=30000, wait_until="load")
                 
                 # Check redirect chain
                 if response:
                     # Capture final URL and status
                     final_url = page.url
+                    
+                    # Flag if final page is served over unencrypted HTTP
+                    if final_url.startswith("http://") and not is_whitelisted_domain(final_url) and "Insecure connection: Target URL uses unencrypted HTTP protocol." not in report["behavior_findings"]:
+                        report["behavior_findings"].append("Insecure connection: Final page is served over unencrypted HTTP protocol.")
+
                     if final_url != url:
                         report["redirect_chain"].append(final_url)
                         try:
@@ -217,7 +226,8 @@ def analyze_url(url: str, screenshot_path: str, html_path: str) -> dict:
             "download of", "malicious behavior:"
         ]
         suspicious_triggers = [
-            "password login form", "iframes", "notification", "redirected to external url"
+            "password login form", "iframes", "notification", "redirected to external url",
+            "insecure connection", "unencrypted http"
         ]
         
         has_danger = any(any(dt in f.lower() for dt in danger_triggers) for f in report["behavior_findings"])

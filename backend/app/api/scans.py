@@ -158,7 +158,7 @@ async def scan_text(req: TextScanRequest, current_user: dict = Depends(get_curre
     qwen_res = await analyze_with_qwen(text=req.content)
     
     # 2. Risk Fusion engine calculation (Final Risk Engine)
-    fusion = fuse_text_scores(qwen_res, sandbox_res)
+    fusion = fuse_text_scores(qwen_res, sandbox_res, text_content=req.content)
     
     # Save scan results to MongoDB
     scan_doc = {
@@ -297,7 +297,7 @@ async def scan_image(
     qwen_res = await analyze_with_qwen(text=extracted_text, image_path=file_path)
     
     # 4. Fuse scores (Final Risk Engine)
-    fusion = fuse_text_scores(qwen_res, sandbox_res)
+    fusion = fuse_text_scores(qwen_res, sandbox_res, text_content=extracted_text)
  
     scan_doc = {
         "user_id": current_user["_id"],
@@ -359,7 +359,7 @@ async def scan_voice(
     qwen_res = await analyze_with_qwen(text=transcript)
     
     # 3. Fuse scores (Final Risk Engine)
-    fusion = fuse_text_scores(qwen_res, sandbox_res)
+    fusion = fuse_text_scores(qwen_res, sandbox_res, text_content=transcript)
     
     scan_doc = {
         "user_id": current_user["_id"],
@@ -408,7 +408,7 @@ async def scan_email(req: EmailScanRequest, current_user: dict = Depends(get_cur
     qwen_res = await analyze_with_qwen(text=req.content)
     
     # Get combined body text and sandbox result fusion
-    text_fusion = fuse_text_scores(qwen_res, sandbox_res)
+    text_fusion = fuse_text_scores(qwen_res, sandbox_res, text_content=req.content)
     
     # 3. Blend email header risks with text/sandbox scan risks
     # Header check has a direct penalty weight
@@ -526,7 +526,7 @@ async def scan_unified(
     )
     
     # 5. Final Risk Engine
-    fusion = fuse_text_scores(qwen_res, sandbox_res)
+    fusion = fuse_text_scores(qwen_res, sandbox_res, text_content=combined_text or extracted_text)
     
     # Save scan document
     scan_doc = {
@@ -577,7 +577,7 @@ async def scan_bulk(req: BulkScanRequest, current_user: dict = Depends(get_curre
         qwen_res = await analyze_with_qwen(text=msg)
         
         # Risk Fusion (Final Risk Engine)
-        fusion = fuse_text_scores(qwen_res, sandbox_res)
+        fusion = fuse_text_scores(qwen_res, sandbox_res, text_content=msg)
         
         is_scam = fusion["category"] in ["Dangerous", "Suspicious"]
         verdict = "Scam" if is_scam else "Not Scam"

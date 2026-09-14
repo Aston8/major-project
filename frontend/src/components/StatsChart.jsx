@@ -42,11 +42,11 @@ export const StatsChart = ({ type = 'bar', data = {} }) => {
       },
       tooltip: {
         padding: 10,
-        backgroundColor: '#0F172A',
+        backgroundColor: '#160A29',
         titleFont: { family: 'Outfit', size: 13 },
         bodyFont: { family: 'Inter', size: 12 },
         borderWidth: 1,
-        borderColor: '#1E293B'
+        borderColor: '#2B154E'
       }
     },
     scales: type !== 'pie' ? {
@@ -92,8 +92,8 @@ export const StatsChart = ({ type = 'bar', data = {} }) => {
         {
           label: 'Scans Initiated',
           data: Object.values(data),
-          backgroundColor: 'rgba(99, 102, 241, 0.25)', // Indigo
-          borderColor: '#6366F1',
+          backgroundColor: 'rgba(107, 33, 228, 0.25)', // Vibrant Purple
+          borderColor: '#6B21E4',
           borderWidth: 1.5,
           borderRadius: 6,
         }
@@ -110,10 +110,10 @@ export const StatsChart = ({ type = 'bar', data = {} }) => {
           fill: true,
           label: 'Total Incidents',
           data: Object.values(data),
-          borderColor: '#06B6D4', // Cyan 500
-          backgroundColor: 'rgba(6, 182, 212, 0.1)',
+          borderColor: '#B289FA', // Accent Light Purple
+          backgroundColor: 'rgba(178, 137, 250, 0.1)',
           borderWidth: 2,
-          pointBackgroundColor: '#06B6D4',
+          pointBackgroundColor: '#B289FA',
           tension: 0.3
         }
       ]
