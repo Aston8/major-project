@@ -9,7 +9,7 @@
     overflow-x: hidden;
     position: relative;
   }
-  
+
   /* Cyber Grid Mesh Background */
   body::before {
     content: "";
@@ -18,7 +18,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background-image: 
+    background-image:
       linear-gradient(rgba(161, 96, 255, 0.035) 1px, transparent 1px),
       linear-gradient(90deg, rgba(161, 96, 255, 0.035) 1px, transparent 1px);
     background-size: 32px 32px;
@@ -40,7 +40,12 @@
     filter: blur(100px);
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: 'Outfit', sans-serif;
   }
 }
@@ -63,21 +68,27 @@
   left: -150%;
   width: 50%;
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(161, 96, 255, 0.05),
-    transparent
-  );
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(161, 96, 255, 0.05),
+      transparent);
   transform: skewX(-25deg);
   animation: shine-sweep 8s infinite ease-in-out;
   pointer-events: none;
 }
 
 @keyframes shine-sweep {
-  0% { left: -150%; }
-  35% { left: 150%; }
-  100% { left: 150%; }
+  0% {
+    left: -150%;
+  }
+
+  35% {
+    left: 150%;
+  }
+
+  100% {
+    left: 150%;
+  }
 }
 
 .glass-card:hover {
@@ -134,10 +145,13 @@
 
 /* Micro-animations */
 @keyframes pulse-glow {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.6;
     box-shadow: 0 0 5px rgba(107, 33, 228, 0.2);
   }
+
   50% {
     opacity: 1;
     box-shadow: 0 0 15px rgba(107, 33, 228, 0.5);
@@ -147,25 +161,29 @@
 .pulse-cyber {
   animation: pulse-glow 2s infinite ease-in-out;
 }
+
 /* Premium Light Purple Accents & Input Highlights */
 input[type="text"],
 textarea,
 select {
   background-color: rgba(12, 5, 24, 0.6) !important;
   border-color: rgba(163, 102, 255, 0.18) !important;
-  color: #F5EEFF !important; /* Soft white/violet text */
+  color: #F5EEFF !important;
+  /* Soft white/violet text */
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 input[type="text"]::placeholder,
 textarea::placeholder {
-  color: #8C75A5 !important; /* Soft violet placeholder */
+  color: #8C75A5 !important;
+  /* Soft violet placeholder */
 }
 
 input[type="text"]:focus,
 textarea:focus,
 select:focus {
-  border-color: rgba(163, 102, 255, 0.6) !important; /* Light purple focus border */
+  border-color: rgba(163, 102, 255, 0.6) !important;
+  /* Light purple focus border */
   background-color: rgba(18, 9, 36, 0.8) !important;
   box-shadow: 0 0 12px rgba(163, 102, 255, 0.25) !important;
 }
@@ -183,6 +201,6 @@ select:focus {
 }
 
 .border-dashed span {
-  color: #DBC8FC !important; /* Soft light purple text */
+  color: #DBC8FC !important;
+  /* Soft light purple text */
 }
-

@@ -1,84 +1,96 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { Navbar } from './components/Navbar';
-import { Sidebar } from './components/Sidebar';
-import { Login } from './pages/Login';
-import { Register } from './pages/Register';
-import { Scanner } from './pages/Scanner';
-import { ScanHistory } from './pages/ScanHistory';
-import { AdminPanel } from './pages/AdminPanel';
+import React, { useState, useEffect } from 'react';
+import LandingPage from './pages/LandingPage';
+import Investigate from './pages/Investigate';
+import HistoryPage from './pages/HistoryPage';
+import Sidebar from './components/Sidebar';
+import TopBar from './components/TopBar';
+import GlobalSearchModal from './components/GlobalSearchModal';
+import InvestigationDetailModal from './components/InvestigationDetailModal';
+import { historyService } from './services/historyService';
+import { formatScanDocument } from './services/formatters';
 
-// Protected Route Guard
-const ProtectedRoute = ({ children }) => {
-  const { token, loading } = useAuth();
-  
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-cyber-bg text-gray-400">
-        <span className="w-8 h-8 border-4 border-indigo-500/20 border-t-indigo-400 rounded-full animate-spin"></span>
-      </div>
-    );
-  }
-  
-  if (!token) {
-    return <Navigate to="/login" replace />;
-  }
-  
-  return children;
-};
+export function App() {
+  const [viewMode, setViewMode] = useState('app'); // 'landing' or 'app'
+  const [activeTab, setActiveTab] = useState('investigate'); // 'investigate' or 'history'
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [selectedInvestigation, setSelectedInvestigation] = useState(null);
+  const [investigations, setInvestigations] = useState([]);
 
-// Admin Route Guard
-const AdminRoute = ({ children }) => {
-  const { token, user, loading } = useAuth();
-  
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-cyber-bg text-gray-400">
-        <span className="w-8 h-8 border-4 border-indigo-500/20 border-t-indigo-400 rounded-full animate-spin"></span>
-      </div>
-    );
-  }
-  
-  if (!token || user?.role !== 'admin') {
-    return <Navigate to="/" replace />;
-  }
-  
-  return children;
-};
+  // Sync real database scan history for search modal
+  useEffect(() => {
+    historyService.getScanHistory(50)
+      .then(res => {
+        if (res && res.results && res.results.length > 0) {
+          const formatted = res.results.map(formatScanDocument).filter(Boolean);
+          setInvestigations(formatted);
+        }
+      })
+      .catch(err => {
+        console.log('Search index sync notice:', err);
+      });
+  }, [activeTab]);
 
-// Application shell layout
-const AppLayout = () => {
+  const handleSaveNewInvestigation = (newInv) => {
+    const formatted = formatScanDocument(newInv) || newInv;
+    setInvestigations(prev => [formatted, ...prev]);
+  };
+
+  if (viewMode === 'landing') {
+    return <LandingPage onEnterApp={() => setViewMode('app')} />;
+  }
+
   return (
-    <div className="flex flex-col min-h-screen bg-cyber-bg">
-      <Navbar />
-      <div className="flex flex-1">
-        <Sidebar />
-        <main className="flex-1 bg-cyber-bg overflow-y-auto">
-          <Routes>
-            <Route path="/" element={<Scanner />} />
-            <Route path="/scanner" element={<Navigate to="/" replace />} />
-            <Route path="/history" element={<ScanHistory />} />
-            <Route path="/admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+    <div className="min-h-screen bg-[#F7F7F5] text-[#111111] font-sans antialiased flex selection:bg-[#111111] selection:text-white">
+      {/* Persistent Left Sidebar: INVESTIGATE & HISTORY only */}
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isOpen={isSidebarOpen}
+        setIsOpen={setIsSidebarOpen}
+      />
+
+      {/* Main Content Workspace */}
+      <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+        {/* Top Header Bar */}
+        <TopBar
+          onOpenSearch={() => setIsSearchOpen(true)}
+          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+          activeTab={activeTab}
+        />
+
+        {/* Page Content Body */}
+        <main className="flex-1 p-4 md:p-8 max-w-7xl w-full mx-auto space-y-8">
+          {activeTab === 'investigate' && (
+            <Investigate
+              onSaveNewInvestigation={handleSaveNewInvestigation}
+            />
+          )}
+
+          {activeTab === 'history' && (
+            <HistoryPage
+              onSelectInvestigation={(inv) => setSelectedInvestigation(inv)}
+            />
+          )}
         </main>
       </div>
-    </div>
-  );
-};
 
-function App() {
-  return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/*" element={<ProtectedRoute><AppLayout /></ProtectedRoute>} />
-        </Routes>
-      </AuthProvider>
-    </BrowserRouter>
+      {/* Global Search Modal (Cmd + K) */}
+      <GlobalSearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        investigations={investigations}
+        onSelectInvestigation={(inv) => setSelectedInvestigation(inv)}
+      />
+
+      {/* Investigation Detail Modal */}
+      {selectedInvestigation && (
+        <InvestigationDetailModal
+          investigation={selectedInvestigation}
+          onClose={() => setSelectedInvestigation(null)}
+        />
+      )}
+    </div>
   );
 }
 
