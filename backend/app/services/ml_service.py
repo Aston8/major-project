@@ -189,12 +189,97 @@ def heuristic_text_analysis(text: str) -> dict:
     else:
         explanation = "No major scam keywords or behavioral indicators were triggered during text analysis."
 
+    # Compute content-aware tactic breakdown & DNA signals
+    impersonation_matches = [bk for bk in ["chase", "paypal", "apple", "fedex", "irs", "microsoft", "amazon", "bank", "wells fargo", "citi", "metamask", "coinbase", "police", "customs", "support", "department", "officer"] if bk in text_lower]
+    urgency_matches = [uk for uk in ["urgent", "immediately", "restricted", "suspended", "lock", "freeze", "action required", "do not ignore", "last chance", "within 24 hours", "before midnight", "failed login"] if uk in text_lower]
+    cred_matches = [ck for ck in ["otp", "verification code", "password", "ssn", "pin", "access", "verify", "recovery phrase", "credentials", "card number", "cvv", "login"] if ck in text_lower]
+    fin_matches = [fk for fk in ["fee", "pay", "refund", "bank", "account", "card", "transfer", "dollar", "usd", "inr", "rupees", "balance", "invoice", "money", "crores", "lakh"] if fk in text_lower]
+
+    if impersonation_matches:
+        imp_score = min(99.0, max(78.0, len(impersonation_matches) * 45.0, scam_score * 0.88))
+    else:
+        imp_score = min(92.0, scam_score * 0.8) if scam_score >= 60 else (scam_score * 0.5 if scam_score >= 30 else 5.0)
+
+    if urgency_matches:
+        urg_score = min(99.0, max(82.0, len(urgency_matches) * 40.0, scam_score * 0.92))
+    else:
+        urg_score = min(95.0, scam_score * 0.85) if scam_score >= 60 else (scam_score * 0.5 if scam_score >= 30 else 5.0)
+
+    if cred_matches:
+        cred_score = min(99.0, max(80.0, len(cred_matches) * 45.0, scam_score * 0.9))
+    else:
+        cred_score = min(90.0, scam_score * 0.75) if scam_score >= 60 else (scam_score * 0.4 if scam_score >= 30 else 0.0)
+
+    if fin_matches:
+        fin_score = min(99.0, max(85.0, len(fin_matches) * 40.0, scam_score * 0.95))
+    else:
+        fin_score = min(95.0, scam_score * 0.85) if scam_score >= 60 else (scam_score * 0.5 if scam_score >= 30 else 0.0)
+
+    iso_score = min(90.0, max(75.0 if scam_score >= 60 else 10.0, urg_score * 0.85))
+
+    tactic_breakdown = {
+        "impersonation": round(imp_score, 1),
+        "urgency": round(urg_score, 1),
+        "credentialHarvest": round(cred_score, 1),
+        "financialIntent": round(fin_score, 1),
+        "isolation": round(iso_score, 1)
+    }
+
+    dna_signals = {
+        "phishing": round(scam_score, 1),
+        "impersonation": tactic_breakdown["impersonation"],
+        "urgency": tactic_breakdown["urgency"],
+        "otpFraud": tactic_breakdown["credentialHarvest"],
+        "financial": tactic_breakdown["financialIntent"]
+    }
+
+    # Generate tactic highlights
+    tactic_highlights = []
+    url_match = re.search(r'(https?://[^\s]+|www\.[^\s]+)', text, re.IGNORECASE)
+    if url_match:
+        tactic_highlights.append({
+            "phrase": url_match.group(0),
+            "tactic": "PHISHING URL / CREDENTIAL HARVEST",
+            "description": f"Unverified destination link '{url_match.group(0)}' engineered to capture authentication credentials.",
+            "severity": "CRITICAL"
+        })
+
+    for uk in urgency_matches[:2]:
+        m = re.search(re.escape(uk), text, re.IGNORECASE)
+        tactic_highlights.append({
+            "phrase": m.group(0) if m else uk,
+            "tactic": "URGENCY & COERCION",
+            "description": f"High-pressure psychological trigger '{m.group(0) if m else uk}' designed to force immediate compliance.",
+            "severity": "HIGH"
+        })
+
+    for im in impersonation_matches[:2]:
+        m = re.search(re.escape(im), text, re.IGNORECASE)
+        tactic_highlights.append({
+            "phrase": m.group(0) if m else im,
+            "tactic": "AUTHORITY IMPERSONATION",
+            "description": f"Spoofed entity keyword '{m.group(0) if m else im}' leveraging brand reputation to gain unearned trust.",
+            "severity": "CRITICAL"
+        })
+
+    for ck in cred_matches[:2]:
+        m = re.search(re.escape(ck), text, re.IGNORECASE)
+        tactic_highlights.append({
+            "phrase": m.group(0) if m else ck,
+            "tactic": "CREDENTIAL HARVESTING",
+            "description": f"Targeting sensitive authentication token or credential keyword '{m.group(0) if m else ck}'.",
+            "severity": "CRITICAL"
+        })
+
     return {
         "score": scam_score,
         "confidence": confidence,
         "category": detected_category if scam_score >= 30 else "Safe",
         "explanation": explanation,
-        "highlighted_keywords": list(set(matched_keywords))
+        "highlighted_keywords": list(set(matched_keywords)),
+        "tactic_breakdown": tactic_breakdown,
+        "tactic_highlights": tactic_highlights,
+        "dna_signals": dna_signals
     }
 
 # Core Service Functions
@@ -207,7 +292,6 @@ async def analyze_text_local(text: str) -> dict:
     if text_pipeline:
         try:
             # DistilBERT model returns label (LABEL_0 or LABEL_1 / SPAM)
-            # Let's run inference
             result = text_pipeline(text)[0]
             label = result['label']
             model_conf = result['score'] * 100.0
@@ -215,20 +299,15 @@ async def analyze_text_local(text: str) -> dict:
             is_spam = label in ["LABEL_1", "SPAM", "spam", "scam"]
             model_score = model_conf if is_spam else (100.0 - model_conf)
             
-            # Smart Blending:
-            # If heuristics are extremely confident, override/boost the model score
             if h_res['score'] >= 80.0:
                 blended_score = max(model_score, h_res['score'])
             elif h_res['score'] > 30.0:
-                # Weighted blend favoring heuristics when they flag something
                 blended_score = (model_score * 0.4) + (h_res['score'] * 0.6)
             else:
-                # General blend
                 blended_score = (model_score * 0.7) + (h_res['score'] * 0.3)
                 
             blended_score = min(max(blended_score, 0.0), 100.0)
             
-            # Determine category based on blended score threshold
             if blended_score >= 60.0:
                 category = h_res['category'] if h_res['category'] not in ["Safe", "Legitimate / Neutral"] else "Dangerous"
             elif blended_score >= 30.0:
@@ -236,7 +315,6 @@ async def analyze_text_local(text: str) -> dict:
             else:
                 category = "Safe"
             
-            # Custom comprehensive explanation
             explanation = f"Local NLP classifier detected {category} ({round(model_conf, 1)}% model certainty). {h_res['explanation']}"
             
             return {
@@ -244,13 +322,15 @@ async def analyze_text_local(text: str) -> dict:
                 "confidence": round(max(model_conf, h_res['confidence']), 2),
                 "category": category,
                 "explanation": explanation,
-                "highlighted_keywords": h_res['highlighted_keywords']
+                "highlighted_keywords": h_res['highlighted_keywords'],
+                "tactic_breakdown": h_res['tactic_breakdown'],
+                "tactic_highlights": h_res['tactic_highlights'],
+                "dna_signals": h_res['dna_signals']
             }
         except Exception as e:
             logger.error(f"DistilBERT model inference error: {e}")
             return h_res
     else:
-        # Fallback entirely to heuristic analysis
         return h_res
 
 async def extract_text_from_image(image_path: str) -> str:

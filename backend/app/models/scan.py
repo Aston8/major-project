@@ -20,6 +20,9 @@ class AIModelResult(BaseModel):
     category: str
     explanation: str
     highlighted_keywords: List[str] = []
+    tactic_breakdown: Optional[Dict[str, float]] = None
+    tactic_highlights: Optional[List[Dict[str, Any]]] = None
+    dna_signals: Optional[Dict[str, float]] = None
 
 class FusionResult(BaseModel):
     final_score: float
@@ -27,6 +30,9 @@ class FusionResult(BaseModel):
     confidence: float
     explanation: str
     recommendations: List[str] = []
+    tactic_breakdown: Optional[Dict[str, float]] = None
+    tactic_highlights: Optional[List[Dict[str, Any]]] = None
+    dna_signals: Optional[Dict[str, float]] = None
 
 class URLMetadata(BaseModel):
     url: str

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, Response
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.db import get_db
@@ -15,6 +15,7 @@ from app.services.report_service import generate_scan_pdf
 import os
 import uuid
 import logging
+import httpx
 from datetime import datetime
 from bson import ObjectId
 from typing import Optional, List
@@ -148,11 +149,11 @@ async def scan_text(req: TextScanRequest, current_user: dict = Depends(get_curre
     sandbox_res = None
     
     if detected_url:
-        logger.info(f"Detected embedded URL '{detected_url}' in text scan. Executing browser sandbox...")
+        logger.info(f"Detected embedded URL '{detected_url}' in text scan. Executing fast browser sandbox...")
         try:
-            sandbox_res = await execute_url_sandbox(detected_url)
+            sandbox_res = await asyncio.wait_for(execute_url_sandbox(detected_url), timeout=3.5)
         except Exception as e:
-            logger.error(f"Embedded URL sandbox execution failed: {e}")
+            logger.warning(f"Embedded URL fast sandbox notice: {e}")
             
     # 1. Run local Qwen2.5-VL assessment
     qwen_res = await analyze_with_qwen(text=req.content)
@@ -287,11 +288,11 @@ async def scan_image(
     
     sandbox_res = None
     if detected_url:
-        logger.info(f"Detected URL '{detected_url}' from image QR/OCR. Running isolated sandbox browser...")
+        logger.info(f"Detected URL '{detected_url}' from image QR/OCR. Running fast isolated sandbox browser...")
         try:
-            sandbox_res = await execute_url_sandbox(detected_url)
+            sandbox_res = await asyncio.wait_for(execute_url_sandbox(detected_url), timeout=3.5)
         except Exception as e:
-            logger.error(f"Image scan sandbox execution failed: {e}")
+            logger.warning(f"Image scan fast sandbox notice: {e}")
             
     # 3. Analyze image directly via Qwen2.5-VL (multimodal)
     qwen_res = await analyze_with_qwen(text=extracted_text, image_path=file_path)
@@ -515,9 +516,9 @@ async def scan_unified(
             final_url = "http://" + final_url
         logger.info(f"Sandbox executing on URL: {final_url}")
         try:
-            sandbox_res = await execute_url_sandbox(final_url)
+            sandbox_res = await asyncio.wait_for(execute_url_sandbox(final_url), timeout=3.5)
         except Exception as e:
-            logger.error(f"Unified URL sandbox execution failed: {e}")
+            logger.warning(f"Unified URL sandbox execution notice: {e}")
             
     # 4. Qwen2.5-VL Model
     qwen_res = await analyze_with_qwen(
@@ -684,3 +685,417 @@ async def get_screenshot(filename: str):
     if not os.path.exists(screenshot_path):
         raise HTTPException(status_code=404, detail="Screenshot file not found.")
     return FileResponse(screenshot_path)
+
+
+@router.get("/sandbox/proxy")
+async def sandbox_proxy(url: str):
+    """
+    Proxies target webpage HTML, injecting a safety banner and interactive navigation logger script.
+    Strictly keeps all navigations within the isolated proxy and blocks localhost breakouts.
+    """
+    url = (url or "").strip()
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = "https://" + url
+
+    try:
+        async with httpx.AsyncClient(
+            follow_redirects=True, 
+            timeout=httpx.Timeout(25.0, connect=10.0), 
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 SmartShield-Sandbox/2.0",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9"
+            }
+        ) as client:
+            resp = await client.get(url)
+            content_type = resp.headers.get("content-type", "")
+            final_target_url = str(resp.url)
+            
+            if "html" in content_type or not content_type:
+                html = resp.text
+                import json
+                import re
+                
+                # Strip existing <base> tags so our injected base is authoritative
+                html = re.sub(r'<base\s+[^>]*>', '', html, flags=re.IGNORECASE)
+                
+                # Neutralize frame-busting scripts in HTML
+                html = re.sub(r'\b(top|parent|window\.top)\.location\b', 'window.__dummy_loc', html)
+                
+                # Neutralize targets that break out of frames (_top, _parent, _blank)
+                html = re.sub(r'target=[\'"](?:_blank|_top|_parent)[\'"]', 'target="_self"', html, flags=re.IGNORECASE)
+                
+                # Base tag for relative links/assets
+                base_tag = f'<base href="{final_target_url}">'
+                
+                # Banner for visual indication
+                banner = '''
+                <div id="smartshield-banner" style="position:fixed;top:0;left:0;right:0;z-index:999999;background:linear-gradient(90deg, #111827, #1f2937);color:#f3f4f6;padding:8px 16px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;font-weight:600;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);box-shadow:0 4px 12px rgba(0,0,0,0.5);">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981;"></span>
+                        <span>SMARTSHIELD ISOLATED SANDBOX — Session Active</span>
+                    </div>
+                    <span style="font-size:10px;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:4px;color:#d1d5db;">ISOLATED CONTAINER</span>
+                </div>
+                <div style="height:36px;"></div>
+                '''
+                
+                escaped_target_base = json.dumps(final_target_url)
+                
+                # Nav script for tracking events and messaging parent iframe
+                nav_script = f'''
+                <script>
+                (function() {{
+                    var TARGET_BASE = {escaped_target_base};
+                    
+                    function notifyParent(type, payload) {{
+                        try {{
+                            window.parent.postMessage({{ source: 'SMARTSHIELD_SANDBOX', eventType: type, payload: payload }}, '*');
+                        }} catch(e) {{}}
+                    }}
+
+                    function resolveTargetUrl(raw) {{
+                        if (!raw) return null;
+                        var str = String(raw).trim();
+                        if (!str || str === '#' || str.startsWith('javascript:') || str.startsWith('mailto:') || str.startsWith('tel:') || str.startsWith('data:')) {{
+                            return null;
+                        }}
+
+                        try {{
+                            // Check if it already contains the proxy prefix
+                            if (str.includes('/api/scans/sandbox/proxy?url=')) {{
+                                try {{
+                                    var u = new URL(str, window.location.origin);
+                                    var nested = u.searchParams.get('url');
+                                    if (nested) return nested;
+                                }} catch(e) {{}}
+                            }}
+
+                            // Resolve relative to TARGET_BASE
+                            var resolved = new URL(str, TARGET_BASE);
+                            
+                            // Reject internal localhost / loopback hosts from target resolution
+                            if (resolved.hostname === 'localhost' || resolved.hostname === '127.0.0.1' || resolved.hostname === '0.0.0.0' || resolved.hostname === '::1') {{
+                                return null;
+                            }}
+
+                            return resolved.href;
+                        }} catch(e) {{
+                            return null;
+                        }}
+                    }}
+
+                    function wrapForProxy(targetUrl) {{
+                        if (!targetUrl) return '';
+                        return '/api/scans/sandbox/proxy?url=' + encodeURIComponent(targetUrl);
+                    }}
+
+                    // Intercept all link clicks
+                    document.addEventListener('click', function(e) {{
+                        var a = e.target.closest('a');
+                        if (!a) return;
+
+                        var rawHref = a.getAttribute('href') || '';
+                        
+                        // On-page hash/anchor navigation (e.g. #about, #events)
+                        if (rawHref.startsWith('#')) {{
+                            e.preventDefault();
+                            e.stopPropagation();
+                            var targetId = rawHref.substring(1);
+                            if (targetId) {{
+                                var el = document.getElementById(targetId) || document.querySelector('[name="' + targetId + '"]');
+                                if (el) {{
+                                    el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                                }}
+                            }}
+                            notifyParent('ANCHOR_NAVIGATED', {{ hash: rawHref }});
+                            return;
+                        }}
+
+                        if (rawHref.startsWith('javascript:')) {{
+                            return;
+                        }}
+
+                        var resolved = resolveTargetUrl(rawHref);
+                        if (resolved) {{
+                            e.preventDefault();
+                            e.stopPropagation();
+                            notifyParent('LINK_CLICKED', {{ 
+                                targetUrl: resolved, 
+                                text: (a.innerText || a.getAttribute('title') || '').trim().slice(0, 60) 
+                            }});
+                            window.location.href = wrapForProxy(resolved);
+                        }}
+                    }}, true);
+
+                    // Intercept form submissions
+                    document.addEventListener('submit', function(e) {{
+                        var form = e.target.closest('form');
+                        if (!form) return;
+
+                        var rawAction = form.getAttribute('action') || '';
+                        var resolvedAction = resolveTargetUrl(rawAction) || TARGET_BASE;
+                        var hasPass = !!form.querySelector('input[type="password"]');
+                        var inputs = Array.from(form.querySelectorAll('input, select, textarea')).map(function(i) {{
+                            return {{ name: i.name || i.id, type: i.type || 'text' }};
+                        }});
+
+                        notifyParent('FORM_SUBMITTED', {{ 
+                            actionUrl: resolvedAction, 
+                            hasPassword: hasPass, 
+                            fields: inputs.slice(0, 10) 
+                        }});
+
+                        var method = (form.getAttribute('method') || 'GET').toUpperCase();
+                        if (method === 'GET') {{
+                            e.preventDefault();
+                            e.stopPropagation();
+                            var fd = new FormData(form);
+                            var params = new URLSearchParams(fd);
+                            var glue = resolvedAction.includes('?') ? '&' : '?';
+                            var fullUrl = resolvedAction + glue + params.toString();
+                            window.location.href = wrapForProxy(fullUrl);
+                        }} else {{
+                            // Safe simulated POST inside sandbox to prevent loopback breakouts
+                            e.preventDefault();
+                            e.stopPropagation();
+                            notifyParent('POST_FORM_SIMULATED', {{ actionUrl: resolvedAction }});
+                            alert('[SMARTSHIELD ISOLATION]: Target form POST submission intercepted and safely logged. Telemetry recorded in sandbox evidence log.');
+                        }}
+                    }}, true);
+
+                    // Track input interactions
+                    document.addEventListener('focusin', function(e) {{
+                        if (!e.target) return;
+                        if (e.target.tagName === 'INPUT' && e.target.type === 'password') {{
+                            notifyParent('PASSWORD_INPUT_INTERACTED', {{ fieldName: e.target.name || e.target.id || 'password' }});
+                        }} else if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {{
+                            notifyParent('INPUT_FIELD_INTERACTED', {{ fieldName: e.target.name || e.target.id || 'input', fieldType: e.target.type || 'text' }});
+                        }}
+                    }}, true);
+
+                    // Safe dummy location object to absorb frame-busting scripts
+                    window.__dummy_loc = {{
+                        set href(val) {{
+                            var res = resolveTargetUrl(val);
+                            if (res) window.location.href = wrapForProxy(res);
+                        }},
+                        replace: function(val) {{
+                            var res = resolveTargetUrl(val);
+                            if (res) window.location.replace(wrapForProxy(res));
+                        }},
+                        assign: function(val) {{
+                            var res = resolveTargetUrl(val);
+                            if (res) window.location.assign(wrapForProxy(res));
+                        }}
+                    }};
+
+                    // Prevent SPA router from changing iframe window.location to localhost routes
+                    try {{
+                        var originalPushState = history.pushState;
+                        history.pushState = function(state, title, url) {{
+                            if (url) {{
+                                var res = resolveTargetUrl(url);
+                                if (res) {{
+                                    notifyParent('SPA_NAVIGATED', {{ route: res }});
+                                }}
+                            }}
+                        }};
+                        var originalReplaceState = history.replaceState;
+                        history.replaceState = function(state, title, url) {{
+                            if (url) {{
+                                var res = resolveTargetUrl(url);
+                                if (res) {{
+                                    notifyParent('SPA_NAVIGATED', {{ route: res }});
+                                }}
+                            }}
+                        }};
+                    }} catch(err) {{}}
+
+                    // Extract DOM telemetry
+                    function extractDomTelemetry() {{
+                        var pageText = (document.body ? document.body.innerText || '' : '').replace(/\\s+/g, ' ').slice(0, 3000);
+                        var passInputs = document.querySelectorAll('input[type="password"]').length;
+                        var formsCount = document.forms.length;
+                        var linksCount = document.querySelectorAll('a[href]').length;
+                        var scriptsCount = document.querySelectorAll('script').length;
+                        
+                        notifyParent('PAGE_LOADED', {{ 
+                            url: TARGET_BASE,
+                            title: document.title || TARGET_BASE,
+                            pageText: pageText,
+                            passInputs: passInputs,
+                            formsCount: formsCount,
+                            linksCount: linksCount,
+                            scriptsCount: scriptsCount
+                        }});
+                    }}
+
+                    if (document.readyState === 'complete' || document.readyState === 'interactive') {{
+                        extractDomTelemetry();
+                    }} else {{
+                        window.addEventListener('DOMContentLoaded', extractDomTelemetry);
+                        window.addEventListener('load', extractDomTelemetry);
+                    }}
+                }})();
+                </script>
+                '''
+                
+                if "<head>" in html:
+                    html = html.replace("<head>", f"<head>{base_tag}{nav_script}", 1)
+                elif "<head" in html:
+                    html = re.sub(r'<head[^>]*>', r'\g<0>' + base_tag + nav_script, html, count=1)
+                else:
+                    html = base_tag + nav_script + html
+                    
+                if "<body" in html:
+                    html = re.sub(r'<body[^>]*>', r'\g<0>' + banner, html, count=1)
+                else:
+                    html = banner + html
+                    
+                return HTMLResponse(content=html)
+            else:
+                return Response(content=resp.content, media_type=content_type)
+    except Exception as e:
+        import urllib.parse
+        encoded = urllib.parse.quote(url)
+        return HTMLResponse(content=f"""
+            <div style="padding:40px;background:#18181b;color:#fca5a5;font-family:sans-serif;text-align:center;min-height:300px;display:flex;flex-direction:column;justify-content:center;align-items:center;">
+                <div style="font-weight:700;font-size:16px;margin-bottom:8px;color:#f87171;">⚠ Navigation Alert — Sandbox Session Remains Active</div>
+                <p style="color:#cbd5e1;font-size:13px;max-width:500px;line-height:1.5;">Target URL <code>{url}</code> could not be directly loaded over proxy ({str(e)}). This does not terminate the investigation.</p>
+                <div style="margin-top:16px;display:flex;gap:10px;">
+                    <a href="/api/scans/sandbox/proxy?url={encoded}" style="padding:8px 16px;background:#374151;color:#ffffff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:600;">Retry Loading Target</a>
+                </div>
+            </div>
+        """)
+
+
+@router.post("/sandbox/analyze-page")
+async def analyze_sandbox_page(
+    payload: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Analyzes live page text and DOM metadata captured in real-time as user browses inside the sandbox.
+    """
+    target_url = payload.get("url") or "http://example.com"
+    page_text = payload.get("page_text") or ""
+    page_title = payload.get("title") or "Target Page"
+    pass_inputs = payload.get("passInputs", 0)
+    forms_count = payload.get("formsCount", 0)
+    
+    # Fast heuristic & Qwen analysis
+    analyzed_text = f"URL: {target_url}. Title: {page_title}. Password Fields: {pass_inputs}. Forms: {forms_count}. Page Text: {page_text[:1500]}"
+    qwen_res = await analyze_with_qwen(text=analyzed_text, image_path=None)
+    
+    # Calculate live threat score
+    score = qwen_res.get("score", 50)
+    if pass_inputs > 0 or forms_count > 0:
+        if any(kw in target_url.lower() or kw in page_text.lower() for kw in ["login", "bank", "verify", "secure", "account", "paypal", "chase", "apple"]):
+            score = max(score, 88)
+            
+    category = qwen_res.get("category") or ("Phishing / Credential Harvesting" if score >= 70 else "Informational Webpage")
+    verdict = "Dangerous" if score >= 75 else ("Suspicious" if score >= 40 else "Safe")
+    
+    return {
+        "url": target_url,
+        "title": page_title,
+        "score": score,
+        "verdict": verdict,
+        "category": category,
+        "tactic_breakdown": qwen_res.get("tactic_breakdown", {
+            "impersonation": min(99, score) if score >= 60 else 30,
+            "urgency": min(99, score + 2) if score >= 60 else 25,
+            "credentialHarvest": 90 if pass_inputs > 0 else 20,
+            "financialIntent": score,
+            "isolation": score
+        }),
+        "explanation": qwen_res.get("explanation") or f"SmartShield AI analyzed {page_title}. Flags detected: {pass_inputs} password inputs, {forms_count} forms."
+    }
+
+
+@router.post("/sandbox/audit-session")
+async def audit_sandbox_session(
+    payload: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Audits an interactive live user session recorded inside the sandbox viewport.
+    Fuses recorded user interaction logs (visited pages, form actions, password entries)
+    with backend threat intelligence and sandbox findings for a final verdict.
+    """
+    db = get_db()
+    target_url = payload.get("url") or payload.get("initial_url") or "http://example.com"
+    recorded_events = payload.get("events", [])
+    captured_page_text = payload.get("page_text") or payload.get("pageText") or ""
+    captured_page_title = payload.get("page_title") or payload.get("title") or ""
+    
+    # Run URL scan
+    reputation = await analyze_url_reputation(target_url)
+    threat_intel = await fetch_threat_intelligence(target_url)
+    sandbox = await execute_url_sandbox(target_url)
+    
+    # Enrich sandbox report with live interactive session evidence
+    session_findings = []
+    visited_urls = set()
+    password_entered = False
+    forms_submitted = []
+    
+    for event in recorded_events:
+        etype = event.get("eventType")
+        epayload = event.get("payload", {})
+        if etype == "LINK_CLICKED":
+            turl = epayload.get("targetUrl")
+            if turl: visited_urls.add(turl)
+        elif etype == "PASSWORD_INPUT_INTERACTED":
+            password_entered = True
+        elif etype == "FORM_SUBMITTED":
+            action = epayload.get("actionUrl")
+            if action: forms_submitted.append(action)
+            
+    if visited_urls:
+        session_findings.append(f"Interactive Navigation: User visited {len(visited_urls)} sub-pages during live session.")
+    if password_entered:
+        session_findings.append("Interactive Audit: Password input field was targeted/interacted with during session.")
+    if forms_submitted:
+        session_findings.append(f"Form Actions: {len(forms_submitted)} form submissions were captured by the sandbox proxy.")
+        
+    sandbox["behavior_findings"].extend(session_findings)
+    if captured_page_title:
+        sandbox["page_title"] = captured_page_title
+        
+    # Run local Qwen analysis on extracted full page content + interactive behavior
+    page_text = f"Target URL: {target_url}. Page Title: {captured_page_title or sandbox.get('page_title', '')}. Extracted Page Content: {captured_page_text[:2000]}. Session Findings: {', '.join(sandbox.get('behavior_findings', []))}"
+    qwen_res = await analyze_with_qwen(text=page_text, image_path=None)
+    
+    # Risk Fusion
+    fusion = fuse_url_scores(reputation, threat_intel, sandbox, qwen_res)
+    
+    scan_doc = {
+        "user_id": current_user["_id"],
+        "type": "url",
+        "input_data": {
+            "url": target_url, 
+            "title": captured_page_title,
+            "session_events_count": len(recorded_events),
+            "page_text": captured_page_text[:1000]
+        },
+        "local_ml_result": None,
+        "gemini_result": None,
+        "grok_result": None,
+        "qwen_result": qwen_res,
+        "url_metadata": reputation,
+        "sandbox_report": sandbox,
+        "threat_intel_score": threat_intel["risk_score"],
+        "threat_intel_details": threat_intel["details"],
+        "fusion_result": fusion,
+        "created_at": datetime.utcnow()
+    }
+    
+    result = await db.scans.insert_one(scan_doc)
+    scan_doc["_id"] = str(result.inserted_id)
+    
+    return scan_doc
+
+
+

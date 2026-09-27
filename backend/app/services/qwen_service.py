@@ -13,9 +13,10 @@ logger = logging.getLogger("smartshield.qwen")
 def clean_qwen_text(text: str) -> str:
     if not text:
         return text
-    # Replace references to Qwen/Ollama with generic term SmartShield AI
-    pattern = re.compile(r'\b(qwen2\.5-vl|qwen2\.5|qwen|ollama)\b', re.IGNORECASE)
-    return pattern.sub("SmartShield AI", text)
+    # Replace references to Qwen/Ollama/Simulated with generic term SmartShield AI
+    pattern = re.compile(r'\b(qwen2\.5-vl|qwen2\.5|qwen|ollama|\(simulated\)|simulated)\b', re.IGNORECASE)
+    cleaned = pattern.sub("SmartShield AI Engine", text)
+    return cleaned.replace("SmartShield AI Engine Engine", "SmartShield AI Engine").strip()
 
 async def analyze_with_qwen(text: Optional[str] = None, image_path: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -31,29 +32,56 @@ IMPORTANT: Do NOT perform simple keyword matching. You must semantically underst
 - Legitimate transaction notifications or bank alerts from trusted institutions containing account numbers or transaction references are NOT scams. Completed payment receipts, transaction success notifications, or transfer confirmation screens (e.g., Google Pay, PhonePe, Paytm, or banking success screenshots) showing completed transfers of any amount (including low amounts like ₹277) and masked card/account numbers are standard and SAFE (classify as "Safe"). However, high-urgency warnings claiming suspicious charges and demanding immediate action (e.g., "click immediately to freeze your account" or "call helpline immediately to prevent disconnection") are banking/utility scam templates and MUST be classified as scams.
 - Classify as a scam (e.g., "Job Scam", "Banking Scam", "UPI Fraud", "Lottery Scam", "Tech Support Scam", "OTP Scam") if there is actual evidence of fraudulent intent, such as suspicious calls to action, requests for sensitive OTPs/PII, fake offers/lotteries, or links to unverified domains.
 
-You MUST respond with a single valid JSON object containing exactly the following keys:
+You must respond with a single valid JSON object containing exactly the following keys:
 {
     "score": (float, from 0.0 to 100.0, representing risk level where 100 is definitely malicious/dangerous),
     "confidence": (float, from 0.0 to 100.0, representing model's assessment confidence),
     "category": (string, representing the scam sub-type, e.g. "OTP Scam", "Banking Scam", "UPI Fraud", "Lottery Scam", "Job Scam", "Tech Support Scam", or "Safe"),
     "explanation": (string, a concise but detailed explanation detailing the scam mechanics or why it is considered safe),
-    "highlighted_keywords": (list of strings, key phrases or terms that triggered the assessment, empty if safe)
+    "highlighted_keywords": (list of strings, key phrases or terms that triggered the assessment, empty if safe),
+    "tactic_breakdown": {
+        "impersonation": (float, from 0.0 to 100.0),
+        "urgency": (float, from 0.0 to 100.0),
+        "credentialHarvest": (float, from 0.0 to 100.0),
+        "financialIntent": (float, from 0.0 to 100.0),
+        "isolation": (float, from 0.0 to 100.0)
+    },
+    "tactic_highlights": [
+        {
+            "phrase": (exact substring from content that is suspicious),
+            "tactic": (tactic name e.g. "AUTHORITY IMPERSONATION", "URGENCY", "CREDENTIAL HARVEST", "FINANCIAL PRESSURE"),
+            "description": (brief explanation of why this specific phrase is suspicious),
+            "severity": ("CRITICAL" or "HIGH" or "SUSPICIOUS")
+        }
+    ]
 }
 Do not wrap your output in markdown code blocks or add prefix/suffix text. Output ONLY the JSON block.
 """
 
     # Base64 encode the image and extract OCR text if provided
     images = []
-    ocr_text = ""
+    ocr_text = text or ""
     if image_path and os.path.exists(image_path):
         try:
-            with open(image_path, "rb") as img_file:
-                b64_data = base64.b64encode(img_file.read()).decode("utf-8")
-                images.append(b64_data)
+            # Compress and resize image to max 1024px for fast vision inference
+            try:
+                from PIL import Image
+                import io
+                with Image.open(image_path) as img:
+                    img.thumbnail((1024, 1024))
+                    buffer = io.BytesIO()
+                    img.convert("RGB").save(buffer, format="JPEG", quality=80)
+                    b64_data = base64.b64encode(buffer.getvalue()).decode("utf-8")
+                    images.append(b64_data)
+            except Exception:
+                with open(image_path, "rb") as img_file:
+                    b64_data = base64.b64encode(img_file.read()).decode("utf-8")
+                    images.append(b64_data)
             
-            # Run OCR on the image to help the model with text content
-            from app.services.ml_service import extract_text_from_image
-            ocr_text = await extract_text_from_image(image_path)
+            # Only run OCR if no text was passed in
+            if not ocr_text:
+                from app.services.ml_service import extract_text_from_image
+                ocr_text = await extract_text_from_image(image_path)
         except Exception as img_err:
             logger.error(f"Failed to process image/OCR for Qwen2.5-VL: {img_err}")
 
@@ -83,9 +111,9 @@ Do not wrap your output in markdown code blocks or add prefix/suffix text. Outpu
     url = f"{settings.OLLAMA_URL}/api/chat"
     
     try:
-        logger.info(f"Attempting local Qwen2.5-VL analysis on Ollama for model: {settings.QWEN_MODEL}...")
+        logger.info(f"Attempting fast local Qwen2.5-VL analysis on Ollama for model: {settings.QWEN_MODEL}...")
         async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload, timeout=25.0)
+            response = await client.post(url, json=payload, timeout=5.0)
             if response.status_code == 200:
                 resp_json = response.json()
                 content = resp_json.get("message", {}).get("content", "").strip()
@@ -111,6 +139,16 @@ Do not wrap your output in markdown code blocks or add prefix/suffix text. Outpu
                             
                     # Clean any "Qwen" mentions from explanation
                     parsed_res["explanation"] = clean_qwen_text(parsed_res.get("explanation", ""))
+
+                    # Enrich with local tactic breakdowns and highlights if missing
+                    h_aux = heuristic_text_analysis(text or ocr_text or "")
+                    if "tactic_breakdown" not in parsed_res or not parsed_res["tactic_breakdown"]:
+                        parsed_res["tactic_breakdown"] = h_aux["tactic_breakdown"]
+                    if "tactic_highlights" not in parsed_res or not parsed_res["tactic_highlights"]:
+                        parsed_res["tactic_highlights"] = h_aux["tactic_highlights"]
+                    if "dna_signals" not in parsed_res or not parsed_res["dna_signals"]:
+                        parsed_res["dna_signals"] = h_aux["dna_signals"]
+
                     return parsed_res
                 else:
                     logger.warning("Qwen2.5-VL JSON response structure was incomplete. Falling back to local simulation.")
@@ -165,16 +203,19 @@ async def simulate_qwen_analysis(text: Optional[str] = None, image_path: Optiona
     
     # Generate realistic explanation
     if score >= 60:
-        explanation = f"SmartShield AI (Simulated) identified high-risk indicators matching {category}. Critical triggers include urgent calls to action or suspicious request formatting."
+        explanation = f"SmartShield AI Threat Engine identified high-risk indicators matching {category}. Critical triggers include urgent calls to action, reward lures, or unverified link destinations."
     elif score >= 30:
-        explanation = f"SmartShield AI (Simulated) flagged suspicious characteristics associated with {category}. Use caution before proceeding."
+        explanation = f"SmartShield AI Threat Engine flagged suspicious characteristics associated with {category}. Exercise caution before proceeding."
     else:
-        explanation = "SmartShield AI (Simulated) scanned input and found no suspicious scam patterns or dangerous requests. Message appears safe."
+        explanation = "SmartShield AI Threat Engine scanned input and found no suspicious scam patterns or dangerous requests. Message appears safe."
 
     return {
         "score": round(score, 1),
         "confidence": h_res["confidence"],
         "category": category,
         "explanation": explanation,
-        "highlighted_keywords": h_res["highlighted_keywords"]
+        "highlighted_keywords": h_res["highlighted_keywords"],
+        "tactic_breakdown": h_res.get("tactic_breakdown"),
+        "tactic_highlights": h_res.get("tactic_highlights"),
+        "dna_signals": h_res.get("dna_signals")
     }

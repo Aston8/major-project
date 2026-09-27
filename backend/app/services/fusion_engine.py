@@ -133,7 +133,10 @@ def fuse_text_scores(
         "confidence": round(confidence, 2),
         "explanation": explanation,
         "recommendations": recs,
-        "strategy": "SmartShield AI + Sandbox Fusion" if sandbox_res else "SmartShield AI Engine"
+        "strategy": "SmartShield AI + Sandbox Fusion" if sandbox_res else "SmartShield AI Engine",
+        "tactic_breakdown": qwen_res.get("tactic_breakdown"),
+        "tactic_highlights": qwen_res.get("tactic_highlights"),
+        "dna_signals": qwen_res.get("dna_signals")
     }
 
 def fuse_url_scores(
@@ -226,5 +229,8 @@ def fuse_url_scores(
         "category": category,
         "confidence": 85.0, # High confidence due to multi-source checking
         "explanation": explanation,
-        "recommendations": recs
+        "recommendations": recs,
+        "tactic_breakdown": qwen_res.get("tactic_breakdown") if qwen_res else None,
+        "tactic_highlights": qwen_res.get("tactic_highlights") if qwen_res else None,
+        "dna_signals": qwen_res.get("dna_signals") if qwen_res else None
     }
